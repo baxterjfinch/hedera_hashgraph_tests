@@ -1,4 +1,4 @@
-const { Client, PrivateKey, AccountCreateTransaction, AccountBalanceQuery, Hbar } = require("@hashgraph/sdk");
+const { Client, PrivateKey, AccountCreateTransaction, AccountBalanceQuery, Hbar, TransferTransaction } = require("@hashgraph/sdk");
 require("dotenv").config();
 
 async function main() {
@@ -18,7 +18,13 @@ async function main() {
     const client = Client.forTestnet();
 
     client.setOperator(myAccountId, myPrivateKey);
-    createAccount(client);
+
+    createAccount(client).then((newAccount) => {
+      return createTransfer(client, myAccountId, newAccount, 1000)
+
+    }).catch((err) => {
+      console.log(err)
+    });
 }
 
 async function createAccount(client) {
@@ -35,7 +41,6 @@ async function createAccount(client) {
 
     const getReceipt = await newAccountTransactionResponse.getReceipt(client);
     const newAccountId = getReceipt.accountId;
-    console.log("The new account ID is: " +newAccountId);
 
     //Verify the account balance
     const accountBalance = await new AccountBalanceQuery()
@@ -43,6 +48,29 @@ async function createAccount(client) {
         .execute(client);
 
     console.log("The new account balance is: " +accountBalance.hbars.toTinybars() +" tinybar.");
+    return newAccountId;
+}
+async function createTransfer(client, fromAccount, toAccount, amount) {
 
+  const transferTransactionResponse = await new TransferTransaction()
+       .addHbarTransfer(fromAccount, Hbar.fromTinybars(-amount)) //Sending account
+       .addHbarTransfer(toAccount, Hbar.fromTinybars(amount)) //Receiving account
+       .execute(client);
+       //Verify the transaction reached consensus
+    const transactionReceipt = await transferTransactionResponse.getReceipt(client);
+    console.log("The transfer transaction from my account to the new account was: " + transactionReceipt.status.toString());
+
+    const getBalanceCost = await new AccountBalanceQuery()
+     .setAccountId(toAccount)
+     .getCost(client);
+
+    console.log("The cost of query is: " + getBalanceCost);
+
+     //Check the new account's balance
+    const getNewBalance = await new AccountBalanceQuery()
+       .setAccountId(toAccount)
+       .execute(client);
+
+    console.log("The account balance after the transfer is: " + getNewBalance.hbars.toTinybars() +" tinybar.")
 }
 main();
